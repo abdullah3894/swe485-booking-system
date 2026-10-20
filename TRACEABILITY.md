@@ -1,6 +1,6 @@
 # Traceability Matrix — Sports Field & Equipment Booking System
 
-**Status:** DRAFT v2 (human review ) 
+**Status:** DRAFT v3 (human review ) 
 Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are filled later in M1 after the architecture decision; Test ID is filled in M2.
 
 | Req ID | Source (US/UC) | Scenario | Architecture element | ADR | Test ID |
@@ -8,7 +8,7 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | FR-01 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
 | FR-02 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
 | FR-03 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
-| FR-04 | US-02 / UC-02 | SC-02 | TBD | TBD | TBD |
+| FR-04 | US-02 / UC-02 | SC-01, SC-02 | TBD | TBD | TBD |
 | FR-05 | US-03, US-04, US-05 / UC-02, UC-03, UC-04 | SC-01, SC-02 | TBD | TBD | TBD |
 | FR-06 | US-05 / UC-03 | SC-01, SC-03 | TBD | TBD | TBD |
 | FR-07 | US-05 / UC-03 | SC-03 | TBD | TBD | TBD |
@@ -20,6 +20,7 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | FR-13 | US-02 / UC-02 | SC-02 | TBD | TBD | TBD |
 | FR-14 | US-07 / UC-03, UC-05 | SC-03 | TBD | TBD | TBD |
 | FR-15 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
+| FR-16 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
 | NFR-01 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
 | NFR-02 | US-04, US-05, US-06, US-07 / UC-03, UC-04, UC-05 | SC-03 | TBD | TBD | TBD |
 | NFR-03 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
@@ -33,7 +34,7 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | Story | FRs |
 | --- | --- |
 | US-01 | FR-01, FR-02, FR-15 |
-| US-02 | FR-03, FR-04, FR-13 |
+| US-02 | FR-03, FR-04, FR-13, FR-16 |
 | US-03 | FR-05, FR-10 |
 | US-04 | FR-05, FR-08 |
 | US-05 | FR-05, FR-06, FR-07, FR-12 |
@@ -45,7 +46,7 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | Use case | FRs |
 | --- | --- |
 | UC-01 | FR-01, FR-02, FR-15 |
-| UC-02 | FR-03, FR-04, FR-05, FR-10, FR-13 |
+| UC-02 | FR-03, FR-04, FR-05, FR-10, FR-13, FR-16 |
 | UC-03 | FR-05, FR-06, FR-07, FR-11, FR-12, FR-14 |
 | UC-04 | FR-05, FR-08, FR-10 |
 | UC-05 | FR-09, FR-12, FR-14 |
@@ -54,7 +55,7 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 
 | Scenario | Exercises |
 | --- | --- |
-| SC-01 | FR-01, 02, 03, 05, 06, 10, 11, 12, 15 · NFR-01, NFR-03 |
+| SC-01 | FR-01, 02, 03, 04, 05, 06, 10, 11, 12, 15, 16 · NFR-01, NFR-03 |
 | SC-02 | FR-04, 05, 08, 10, 13 · NFR-04, NFR-05 |
 | SC-03 | FR-06, 07, 09, 11, 12, 14 · NFR-02 |
 
@@ -64,8 +65,8 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | --- | --- |
 | NFR-01 | FR-03, FR-04 |
 | NFR-02 | FR-08, FR-12 |
-| NFR-03 | FR-03, FR-10 |
+| NFR-03 | FR-03, FR-10, FR-16 |
 | NFR-04 | FR-04 |
 | NFR-05 | FR-04, FR-13 |
 
-**Orphan check:** 15 FRs and 5 NFRs, each with a source story, a use case and a scenario. No orphan requirements. Every NFR links to the FRs it constrains.
+**Orphan check:** 16 FRs and 5 NFRs, each with a source story, a use case and a scenario. No orphan requirements. Every NFR links to the FRs it constrains.
