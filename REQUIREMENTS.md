@@ -1,6 +1,6 @@
 # Requirements — Sports Field & Equipment Booking System
 
-**Status:** DRAFT v2 human reviewed
+**Status:** DRAFT v3 human reviewed
 Every requirement is testable. Assumptions are marked [ASSUMPTION].
 Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may equal the start of another without conflict.
 
@@ -33,13 +33,14 @@ Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may 
 - **Given** I am logged in and have selected an item, date, start time and end time, **When** I submit, **Then** a Pending booking is created and shown on My Bookings.
 - **Failure:** **Given** the slot overlaps an existing Pending/Approved booking for the same item and date, **When** I submit, **Then** the system rejects it with a conflict message and creates no booking.
 - **Boundary:** **Given** an existing booking ends at 17:00, **When** I request 17:00–18:00 on the same item/date, **Then** the request is accepted (no conflict).
+- **Availability:** **Given** I have selected an item and date, **When** the Request Booking screen loads, **Then** I see the booked time ranges for that item and date, without the names of who booked them.
 
 ### US-03 — As a Member, I want to view my bookings and their status, so that I know if my request is confirmed.
 - **Given** I have bookings, **When** I open My Bookings, **Then** I see each with item, date, times and status.
 - **Failure:** **Given** I have no bookings, **When** I open My Bookings, **Then** I see an empty state and a prompt to make a booking (not an error).
 
 ### US-04 — As a Member, I want to cancel a booking I made, so that I free the slot for others.
-- **Given** I own a Pending or Approved booking whose start time has not passed, **When** I cancel it, **Then** its status becomes Cancelled and it no longer blocks the slot.
+- **Given** I own a Pending or Approved booking and its start time has not been reached, **When** I cancel it, **Then** its status becomes Cancelled and it no longer blocks the slot.
 - **Failure (state):** **Given** my booking is already Cancelled or Rejected, **When** I attempt to cancel, **Then** the system shows a message and makes no change.
 - **Failure (authorization):** **Given** the booking belongs to another member, **When** I attempt to cancel it, **Then** the system returns HTTP 403 and makes no change.
 - **Boundary:** **Given** my booking starts at 19:00, **When** I cancel at 18:59, **Then** it is cancelled; **When** I cancel at 19:00, **Then** it is denied.
@@ -61,7 +62,7 @@ Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may 
 ## c) Use cases
 
 ### UC-01 — Register and log in
-- **Actors:** Member
+- **Actors:** Member (register and log in); Supervisor (log in only — accounts are seeded, FR-15)
 - **Preconditions:** none.
 - **Main flow:** user opens Register, enters name/email/password, submits; system validates, creates the account, and logs the user in.
 - **Alternates/exception:** email already exists → error; invalid email/wrong password → validation or login error.
@@ -70,7 +71,7 @@ Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may 
 ### UC-02 — Request booking
 - **Actors:** Member
 - **Preconditions:** authenticated; at least one active field/item exists.
-- **Main flow:** member selects item, date, start and end time; system validates; checks the conflict rule (FR-04); creates a Pending booking; shows confirmation.
+- **Main flow:** member selects item and date; system shows the booked time ranges for that item and date (FR-16); member selects start and end time; system validates; checks the conflict rule (FR-04); creates a Pending booking; shows confirmation.
 - **Alternates/exception:** conflict → reject with message; end ≤ start, or outside operating hours → validation error.
 - **Postconditions:** a Pending booking is persisted and visible on My Bookings.
 
@@ -85,7 +86,7 @@ Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may 
 - **Actors:** Member (own booking)
 - **Preconditions:** authenticated; owns a Pending or Approved booking.
 - **Main flow:** member opens My Bookings, selects Cancel on an own booking; system sets status Cancelled.
-- **Alternates/exception:** not the owner → denied; cancelled or rejected → no change; booking whose start time has passed → denied.
+- **Alternates/exception:** not the owner → denied; cancelled or rejected → no change; current time is at or after the booking's start time → denied.
 - **Postconditions:** status Cancelled; slot freed.
 
 ### UC-05 — Manage items
@@ -100,7 +101,7 @@ Conflict rule (FR-04): [start, end) half-open intervals; end of one booking may 
 ## d) Scenarios (narrative)
 
 ### SC-01 — Khalid books an evening slot
-Khalid registers, logs in, opens Request Booking, picks "Pitch A" for Thursday 19:00–21:00, and submits. The system finds no conflict, creates a Pending booking, and shows it on My Bookings. Faisal logs in, opens the dashboard, sees the Pending request in the availability view, approves it, and Khalid sees status change to Approved.
+Khalid registers, logs in, opens Request Booking, picks "Pitch A" for Thursday, sees that 17:00–19:00 is already booked, chooses 19:00–21:00, and submits. The system finds no conflict, creates a Pending booking, and shows it on My Bookings. Faisal logs in, opens the dashboard, sees the Pending request in the availability view, approves it, and Khalid sees status change to Approved.
 
 ### SC-02 — Khalid is blocked by a conflict until the slot is cancelled
 Khalid tries to book Pitch A on Monday 19:00–21:00, but Saad (another member) already has a Pending booking for that slot. The system rejects Khalid's request and shows a conflict message. Khalid instead requests 21:00–23:00, which touches but does not overlap Saad's booking, and it is accepted. Later, Saad cancels his booking from My Bookings; its status becomes Cancelled and it no longer blocks the slot. Khalid requests 19:00–21:00 again and this time it is accepted as Pending.
@@ -119,7 +120,7 @@ Faisal opens the dashboard for a peak evening, sees booked vs free slots, approv
 - **FR-05** The system shall store each booking with status one of Pending, Approved, Rejected, Cancelled, and record created_at and decided_at timestamps.
 - **FR-06** The system shall allow a Supervisor to approve a Pending booking, setting status to Approved.
 - **FR-07** The system shall allow a Supervisor to reject a Pending booking, setting status to Rejected.
-- **FR-08** The system shall allow a Member to cancel a booking they own that is Pending or Approved and whose start time has not passed, setting status to Cancelled.
+- **FR-08** The system shall allow a Member to cancel a booking they own that is Pending or Approved strictly before its start time (cancelling at 18:59 for a 19:00 booking is allowed; at 19:00 it is denied), setting status to Cancelled.
 - **FR-09** The system shall allow a Supervisor to add, edit, and deactivate (soft-delete) an item.
 - **FR-10** The system shall display a Member's My Bookings page listing item, date, start, end and status.
 - **FR-11** The system shall display a Supervisor dashboard listing all bookings with status and an availability view of booked vs free slots for the selected day.
@@ -127,6 +128,7 @@ Faisal opens the dashboard for a peak evening, sees booked vs free slots, approv
 - **FR-13** The system shall reject a booking whose end time is not after its start time, or whose start or end falls outside operating hours 06:00–23:00 (06:00–07:00 and 22:00–23:00 are accepted; 05:30 is rejected).
 - **FR-14** The system shall reject creating or approving a booking for a deactivated item.
 - **FR-15** Public registration shall always create a Member account; Supervisor accounts shall be created only through database seeding.
+- **FR-16** The system shall show a Member, on the Request Booking screen, the booked (Pending/Approved) time ranges for the selected item and date, without revealing who made them.
 
 ---
 
@@ -134,7 +136,7 @@ Faisal opens the dashboard for a peak evening, sees booked vs free slots, approv
 [ Six parts per scenario: Source | Stimulus | Artifact | Environment | Response | Response Measure ]
 
 - **NFR-01 (Performance):** A Member submits a booking request → booking route + conflict-check → production-like, up to 50 concurrent members, synthetic data → system validates and returns confirmation or a conflict error → **95th-percentile response ≤ 2 s under 50 concurrent booking requests.**
-- **NFR-02 (Security / access control):** A Member attempts to open the Supervisor dashboard or call approve/reject endpoints → supervisor routes & controllers → web app, authenticated as Member → system denies access → **100% of such requests return HTTP 403 within 1 s; 0 supervisor state changes occur (verified by automated test).**
-- **NFR-03 (Usability):** A first-time Member attempts to find availability and submit a booking unaided → Request Booking screen → desktop browser, synthetic data → system shows available slots and confirms the booking → **at least 4 of 5 participants succeed, median time ≤ 3 minutes, over a 5-participant moderated usability test.**
-- **NFR-04 (Reliability / data integrity):** Two Members submit overlapping booking requests at the same instant → bookings table + conflict-check transaction → concurrent load → database serializes checks so only one is committed → **in a test of 100 simultaneous conflicting requests, exactly 1 booking is committed and 99 receive a conflict error; 0 double-bookings occur.**
+- **NFR-02 (Security / access control):** An authenticated Member attempts an action outside their permissions — opening the Supervisor dashboard, approving/rejecting a booking, managing items, or cancelling another member's booking → supervisor routes, booking routes and their authorization policies → web app, authenticated as Member → system denies the action → **100% of such requests return HTTP 403; 0 state changes occur (verified by one automated test per protected action).**
+- **NFR-03 (Usability):** A first-time Member attempts to find availability and submit a booking unaided → Request Booking screen → desktop browser, synthetic data →system shows booked time ranges and confirms the booking → **at least 4 of 5 participants succeed, median time ≤ 3 minutes, over a 5-participant moderated usability test.**
+- **NFR-04 (Reliability / data integrity):** Up to 100 Members submit booking requests for the same item and overlapping time slot at the same instant → booking module and its data store → concurrent load, synthetic data  → system accepts exactly one request and rejects the rest with a conflict error → **in a test of 100 simultaneous conflicting requests, exactly 1 booking is committed and 99 receive a conflict error; 0 double-bookings occur.**
 - **NFR-05 (Maintainability / testability):** A developer changes the booking-conflict rule and runs the suite → booking service and its tests → CI (PHPUnit/Pest + mutation tool) → tests catch regressions in the rule → **line coverage of the booking module ≥ 80%, mutation score ≥ 70%, and the suite contains tests for touching intervals (17:00), a 1-minute overlap, and the conflict failure path**
