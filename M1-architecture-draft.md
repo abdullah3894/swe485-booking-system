@@ -1,59 +1,88 @@
 # M1 Architecture — First Draft (Sports Field & Equipment Booking System)
 
-**Scope:** two deliberately different architecture options. Fixed constraints from the brief: ≤6 screens, ≤10 API endpoints, ≤8 tables/collections, exactly 2 roles, synthetic data only, single deployment target, no Kubernetes/custom CI/multi-region.
+**Milestone:** M1 · **Status:** v2 — human-reviewed · **Date:** 2026-10-21
+**Author / reviewer:** Abdullah Alhirbish
+
+**Decision:** Option A — modular Laravel monolith (see ADR-001). Option B — serverless Firebase — was evaluated and rejected.
 
 ---
 
-## OPTION A — Server-based web app (PHP 8.2 + Laravel 12, Blade views, no Livewire)
+## 1. Distinctness check — are the two options really different?
 
-### 1. Summary
+The first AI draft (v1) offered "Laravel + Blade" vs "Laravel API + SPA": same backend, same database, same modules, same concurrency mechanism, same cost. That is one design with two frontends, so it was rejected and a second draft was requested. The final two options differ on every structural dimension:
 
-Classic server-rendered monolith. A single PHP 8.2/Laravel 12 application serves Blade HTML pages, runs all business logic in service classes, and persists to MySQL/MariaDB (InnoDB) via Eloquent.
+| Dimension | Option A — Modular monolith | Option B — Serverless / BaaS |
+|---|---|---|
+| Architectural style | One server-side application | Managed services + functions, no own server |
+| Language / runtime | PHP 8.2 / Laravel 12 | TypeScript / Node.js 20 (Cloud Functions) + browser JS |
+| UI rendering | Server-rendered Blade pages | Single-page app in the browser |
+| Data store | Relational — MySQL/MariaDB (InnoDB) | Document — Cloud Firestore (NoSQL) |
+| Authentication | Laravel session auth, roles in `users.role` | Firebase Auth, roles as custom claims |
+| Concurrency control (NFR-04) | Pessimistic DB row lock in a transaction | Optimistic Firestore transaction with retries |
+| Access control enforced by | Laravel middleware + policies (server code) | Firestore security rules + function checks |
+| Deployment | One deployable on one server | Four managed services (Hosting, Auth, Functions, Firestore) |
+| Billing model | Fixed monthly server | Pay-per-use (Blaze plan required for Functions) |
 
-**Booking flow:** Browser → `GET /bookings` renders the Request Booking screen; the controller calls `BookingService::bookedRangesFor(itemId, date)` (from the Booking module) which queries the `bookings` table → view shows free/booked ranges with **no owner names** (FR-16). Member picks item/date/start/end and `POST /bookings` → controller validates (FR-03, FR-13, FR-14) → `BookingService::createRequest()` opens a transaction, locks the item row, runs the conflict rule (FR-04), inserts a `Pending` booking → redirect to My Bookings.
+**Result:** distinct — no row is the same.
 
-### 2. C4 Context
+---
+
+## 2. OPTION A — Server-based web app (PHP 8.2 + Laravel 12, Blade views, no Livewire)
+
+### 2.1 Summary
+A single Laravel 12 application (PHP 8.2) renders all six screens with Blade, keeps business rules in one service per module, and stores data in MySQL/MariaDB. The code is split into three modules; **each module owns its tables and other modules may only call its service**, never touch its tables.
+
+**Booking request flow (FR-03, FR-04, FR-13, FR-14, FR-16):**
+1. `GET /bookings/create?item=…&date=…` → controller calls `BookingService::memberAvailability(item, date)` → returns booked time ranges only, no names (FR-16) → Blade page.
+2. Member submits → `POST /bookings` → form request validates times and operating hours (FR-13).
+3. Controller calls `BookingService::createRequest(user, item, date, start, end)`:
+   - asks Catalog `ItemCatalogService::isActive(item)` (FR-14);
+   - opens a DB transaction, takes the lock row in **its own** `booking_locks` table for `(item, date)` (ADR-003);
+   - runs the FR-04 overlap query on `bookings`;
+   - inserts a `pending` booking, commits.
+4. Redirect to My Bookings (FR-10).
+
+### 2.2 C4 - Context
 
 ```mermaid
 C4Context
-    title C4 Context — Option A (Laravel monolith)
-    Person(member, "Member (Khalid)", "Books fields/equipment; tracks own bookings")
-    Person(supervisor, "Supervisor (Faisal)", "Approves/rejects; manages the item catalog")
-    System(bookSys, "Sports Field & Equipment Booking System", "PHP 8.2 / Laravel 12 + Blade web app")
-    Boundary(center, "Community Sports Center") {
-        System(bookSys, "Booking System")
-    }
-    Rel(member, bookSys, "HTTPS — register, login, request, view, cancel")
-    Rel(supervisor, bookSys, "HTTPS — login, dashboard, manage items")
-    %% No external systems by design: no payment, no SMS, no email (non-goals)
+    title Context — Option A (modular Laravel monolith)
+    Person(member, "Member", "Requests, views and cancels own bookings")
+    Person(supervisor, "Supervisor", "Approves or rejects bookings; manages items")
+    System(bookSys, "Sports Booking System")
+    Rel(member, bookSys, "Uses", "HTTPS")
+    Rel(supervisor, bookSys, "Uses", "HTTPS")
 ```
 
-### 3. C4 Container
+No external systems: payment, SMS/WhatsApp and email are non-goals (charter).
+
+### 2.3 C4 Container
 
 ```mermaid
 C4Container
     title C4 Container — Option A
     Person(member, "Member")
     Person(supervisor, "Supervisor")
-    SystemBoundary(box, "Single server (LAMP / XAMPP-style)") {
-        Container(web, "Web Application", "PHP 8.2 / Laravel 12", "Blade views, controllers, services, Eloquent ORM")
-        ContainerDb(db, "MySQL Database", "MySQL / MariaDB (InnoDB)", "users, items, bookings")
+    SystemBoundary(box, "Sports Booking System — one server") {
+        Container(web, "Web Application", "PHP 8.2 / Laravel 12", "6 screens; Identity, Catalog and Booking modules; policies")
+        ContainerDb(db, "MySQL Database", "MySQL / MariaDB (InnoDB)", "users, items, bookings, booking_locks")
     }
     Rel(member, web, "HTTPS GET/POST (Blade HTML)")
-    Rel(supervisor, web, "HTTPS GET/POST (Blade HTML)")
+    Rel(supervisor, web, "HTTPS, session cookie")
     Rel(web, db, "SQL via Eloquent (PDO)")
 ```
 
-### 4. Modules
+### 2.4 Modules
 
 Each module owns its tables and is only reachable through a service interface.
+Element IDs are used in `TRACEABILITY.md`.
 
-| Module | Owns (tables) | Calls (via interface) |
+| ID | Module | Owns | Public interface | Depends on |
 |---|---|---|
-| **Identity & Access** | `users` | None. Exposes `AuthService` (register, login, currentUser, role); consumed by controllers + authorization middleware. |
-| **Facility Catalog** | `items` | None. Exposes `ItemCatalogService` (create, update, deactivate, isActive, listActive, getById). |
-| **Booking** | `bookings` | Depends on **Catalog** via `ItemCatalogService::isActive(id)` (reject FR-14) and `getById(id)` (item name for FR-11); authorization via middleware (Identity), never reads `users`/`items` directly. Exposes `BookingService`: `createRequest`, `approve`, `reject`, `cancel`, `listForMember`, `listAll`, `bookedRangesFor`. |
-| **Availability View** (read-only reporting) | *none* | Depends on **Booking** via `BookingService::bookedRangesFor(item,date)` → FR-16 (ranges only, **no owner**) and `BookingService::listAll()` → FR-11 (full detail, enriched with item names via `ItemCatalogService`). Never writes. |
+| **A-ID** | Identity & Access | `users` | `IdentityService`: register (Member only, FR-15), current user, role, `namesFor(userIds)` | — |
+| **A-CAT** | Catalog | `items` | `ItemCatalogService`: listActive, getByIds(itemIds) , create, update, deactivate, `isActive` | — |
+| **A-BK** | Booking | `bookings`, `booking_locks` | `BookingService`: createRequest, cancel, approve, reject, listForMember, `bookedRangesFor`, `supervisorSchedule` |A-CAT (isActive, getById, getByIds) · A-ID (namesFor) — **interfaces only** |
+
 
 **Module-ownership rule check (the one risk point):** FR-11 (dashboard) logically wants a `bookings × items` join. To avoid a module reading another's table directly, the join is performed *inside* `BookingService` (which calls `ItemCatalogService::getById`), not by the dashboard controller. If any controller is ever allowed to run `Booking::join('items')`, this rule is broken. **Places that break the rule:** none, provided the join stays inside `BookingService`. The **Availability View** is deliberately table-less so it cannot violate ownership.
 
