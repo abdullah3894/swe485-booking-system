@@ -2,7 +2,7 @@
 
 **Course:** SWE 485 — Advanced Software Engineering with AI
 **Milestone:** M1 Requirements and Architecture
-**Status:** DRAFT v2 — human review
+**Status:** DRAFT v3 — human review
 **Date:** 2026-10-20
 
 ## Team members
@@ -63,6 +63,7 @@ booking record and a live availability view.
 - [ASSUMPTION] A booking is a single date and time slot — no recurring bookings.
 - [ASSUMPTION] The catalog starts with a small synthetic set of fields/items.
 - [ASSUMPTION] Status is communicated in-app only (no email). 
+- [ASSUMPTION] Each item is one bookable unit (a field, or one equipment set); stock quantities are not tracked.
 
 ## Declared implementation language
 PHP 8.2 with Laravel 12.
