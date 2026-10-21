@@ -1,6 +1,6 @@
 # M1 Architecture — First Draft (Sports Field & Equipment Booking System)
 
-**Milestone:** M1 · **Status:** v2 — human-reviewed · **Date:** 2026-10-21
+**Milestone:** M1 · **Status:** v3 — human-reviewed · **Date:** 2026-10-21
 **Author / reviewer:** Abdullah Alhirbish
 
 **Decision:** Option A — modular Laravel monolith (see ADR-001). Option B — serverless Firebase — was evaluated and rejected.
@@ -82,123 +82,123 @@ Element IDs are used in `TRACEABILITY.md`.
 | **A-ID** | Identity & Access | `users` | `IdentityService`: register (Member only, FR-15), current user, role, `namesFor(userIds)` | — |
 | **A-CAT** | Catalog | `items` | `ItemCatalogService`: listActive, getByIds(itemIds) , create, update, deactivate, `isActive` | — |
 | **A-BK** | Booking | `bookings`, `booking_locks` | `BookingService`: createRequest, cancel, approve, reject, listForMember, `bookedRangesFor`, `supervisorSchedule` |A-CAT (isActive, getById, getByIds) · A-ID (namesFor) — **interfaces only** |
+| **A-WEB** | Web layer | — | Routes, controllers, form requests, Blade views | A-ID, A-CAT, A-BK, A-POL services |
+| **A-POL** | Authorization | — | Role middleware + `BookingPolicy` (owner check), `supervisor` gate | A-ID(role), A-BK(booking owner) |
 
+**Dependency direction:** `A-WEB → {A-ID, A-CAT, A-BK, A-POL}`, `A-BK → {A-CAT, A-ID}`, `A-POL→ {A-ID, A-BK}`. No cycles. A-CAT and A-ID depend on nothing.
 
-**Module-ownership rule check (the one risk point):** FR-11 (dashboard) logically wants a `bookings × items` join. To avoid a module reading another's table directly, the join is performed *inside* `BookingService` (which calls `ItemCatalogService::getById`), not by the dashboard controller. If any controller is ever allowed to run `Booking::join('items')`, this rule is broken. **Places that break the rule:** none, provided the join stays inside `BookingService`. The **Availability View** is deliberately table-less so it cannot violate ownership.
+**FR-16 vs FR-11 separation:** `bookedRangesFor()` returns a DTO with `start` and `end` only — the user is never loaded. `supervisorSchedule()` is a separate method used only behind the `supervisor` gate. The member page cannot receive names because the method it calls never reads them.
 
-### 5. Bounded contexts
+**Module-ownership rule check:** FR-11 (dashboard) needs booking data together with item names and member names — normally a `bookings × items × users` SQL join. To keep each module inside its own tables, `supervisorSchedule()` reads `bookings`, then asks Catalog `ItemCatalogService::getByIds()` and Identity `IdentityService::namesFor()` — three queries instead of one join. A controller running `Booking::join('items')` would break the rule. Accepted cost: three queries instead of one; NFR-01 to be measured in M2.
 
-| Bounded context | Module(s) |
-|---|---|
-| **Identity** | Identity & Access |
-| **Catalog** | Facility Catalog |
-| **Booking** (core domain: conflict rule, decisions, cancellation) | Booking |
-| **Availability / Reporting** | Availability View |
+### 2.5 Bounded contexts
 
-### 6. Endpoint list & table list vs ceilings
+| Context | Language inside it | Module |
+|---|---|---|
+| Identity | user, role, member, supervisor | A-ID |
+| Catalog | item, field, equipment, active / deactivated | A-CAT |
+| Booking (core domain) | booking, slot, interval, conflict, pending / approved / rejected / cancelled | A-BK |
 
-**Endpoints (strict: method + path each count as one) — Option A:**
+### 2.6 Endpoint list & table list vs ceilings
 
-| # | Method | Path | FR | Screen |
-|---|---|---|---|---|
-| 1 | GET | `/login` | US-01 | Login |
-| 2 | POST | `/login` | US-01 | Login |
-| 3 | GET | `/register` | US-01 | Register |
-| 4 | POST | `/register` | FR-01 | Register |
-| 5 | GET | `/bookings` | FR-03, FR-16 | Request Booking |
-| 6 | POST | `/bookings` | FR-04, FR-13, FR-14 | Request Booking |
-| 7 | GET | `/my-bookings` | FR-10 | My Bookings |
-| 8 | POST | `/my-bookings/{id}/cancel` | FR-08 | My Bookings |
-| 9 | GET | `/dashboard` | FR-06, FR-07, FR-11 | Supervisor Dashboard |
-| 10 | POST | `/dashboard/bookings/{id}/decide` | FR-06, FR-07 | Supervisor Dashboard |
-| 11 | GET | `/items` | FR-09 | Manage Items |
-| 12 | POST | `/items` | FR-09 | Manage Items |
-| 13 | POST | `/items/{id}` | FR-09 | Manage Items |
+**Screens (6 / 6):** Login, Register, Request Booking, My Bookings, Supervisor Dashboard, Manage Items.
+**Routes — strict count, every method + path:**
 
-**Total: 13 endpoints → ⚠️ EXCEEDS the 10-endpoint ceiling by 3.**
+| # | Method | Path | Screen | FR | Kind |
+|---|---|---|---|---|---|
+| 1 | GET | `/login` | Login | FR-02 | view |
+| 2 | POST | `/login` | Login | FR-02 | action |
+| 3 | GET | `/register` | Register | FR-01 | view |
+| 4 | POST | `/register` | Register | FR-01, FR-15 | action |
+| 5 | POST | `/logout` | (all) | FR-02 | action |
+| 6 | GET | `/bookings/create` | Request Booking | FR-03, FR-16 | view |
+| 7 | POST | `/bookings` | Request Booking | FR-03, FR-04, FR-13, FR-14 | action |
+| 8 | GET | `/bookings` | My Bookings | FR-10 | view |
+| 9 | POST | `/bookings/{id}/cancel` | My Bookings | FR-08 | action (Member, owner only) |
+| 10 | GET | `/dashboard` | Supervisor Dashboard | FR-11 | view (Supervisor) |
+| 11 | POST | `/dashboard/bookings/{id}/decision` | Supervisor Dashboard | FR-06, FR-07, FR-14 | action (Supervisor) |
+| 12 | GET | `/items` | Manage Items | FR-09 | view (Supervisor) |
+| 13 | POST | `/items` | Manage Items | FR-09 | action (Supervisor) |
+| 14 | POST | `/items/{id}` | Manage Items | FR-09 (edit, deactivate) | action (Supervisor) |
 
-I am not redefining the counting. The root cause: 6 screens with full CRUD (auth = 4, member booking = 4, dashboard = 2, manage-items = 3) cannot fit in 10 once GET render routes count. To comply you must either (a) relax the ceiling to ~13, or (b) reduce screens — e.g. fold the Manage Items *list* into `GET /dashboard` (dropping the separate screen) and merge approve+reject into one `decide` route (already done). I have already merged approve/reject into a single **supervisor** route (both are Supervisor actions, distinguished only by a body field — **allowed**), and kept cancel as a separate **Member** route (a Member action), so the Member/Supervisor endpoint-sharing rule is respected.
+**Total: 14 routes = 6 views + 8 actions.**
+
 
 **Tables — Option A:**
 
-Laravel 12 ships these default migrations: `users`, `password_reset_tokens`, `sessions`, `cache`, `cache_locks`, `jobs`, `job_batches`, `failed_jobs` (8 tables). **Defaults I would remove** to stay in budget:
+**Tables (5 / 8):**
+| Table | Owner | Purpose |
+| `users` | A-ID | name, email (unique), password hash, `role` enum (member, supervisor) |
+| `items` | A-CAT | name (unique), `type` enum (field, equipment), `is_active` boolean |
+| `bookings` | A-BK | user_id, item_id, date, start_time, end_time, `status` enum, created_at, decided_at |
+| `booking_locks` | A-BK | item_id, date — unique; one row per item per day, used only as the lock target |
+| `migrations` | framework | Laravel migration history |
 
-| Remove | Why |
-|---|---|
-| `password_reset_tokens` | Non-goal (no password reset). |
-| `cache`, `cache_locks` | Use `file` cache driver. |
-| `jobs`, `job_batches`, `failed_jobs` | No queue; use `sync` queue driver. |
-| `sessions` | Use `file`/`cookie` session driver (fine for single server). |
+Laravel 12 default tables removed: `password_reset_tokens` (non-goal), `sessions` (file session driver), `cache`, `cache_locks` (file cache driver), `jobs`, `job_batches`, `failed_jobs` (sync queue, no background jobs).
 
-Remaining **data tables:**
+Deactivation uses `is_active = false`, **not** Laravel `SoftDeletes`: soft-deleted rows are hidden from every query, so the dashboard would lose the item name of past bookings.
 
-| Table | Purpose |
-|---|---|
-| `users` | Members + Supervisors; `role` enum column (member/supervisor) — **no `roles` nor `role_user` table**, since there are exactly 2 roles. |
-| `items` | Fields/equipment; `type` enum, `name`, `is_active`; soft-delete via `deleted_at` for deactivation (FR-09, FR-14). |
-| `bookings` | `user_id`, `item_id`, `date`, `start_time`, `end_time`, `status` enum (pending/approved/rejected/cancelled), `created_at`, `decided_at` (FR-05). |
+### 2.7 NFR fit (Option A)
 
-**Total: 3 data tables + 1 framework meta table (`migrations`) = 4.** ✅ Well under the 8-table ceiling.
+| NFR | Design response | Status |
+|---|---|---|
+| NFR-01 performance | One indexed overlap query on `bookings (item_id, date, status)` + one lock row per item-day | Unknown — measure p95 with 50 concurrent requests in M2 |
+| NFR-02 access control | Role middleware on Supervisor routes, `BookingPolicy` owner check on cancel; all in server code | One automated 403 test per protected action (4 actions) in M2 |
+| NFR-03 usability | Server-rendered form; booked ranges shown on the same page (FR-16) | Unknown — 5-participant test |
+| NFR-04 integrity | Transaction + `SELECT … FOR UPDATE` on `booking_locks(item, date)` serialises all requests for the same item-day; the loser re-reads, sees the overlap and returns a conflict error (ADR-003) | Designed to give 1 committed / 99 conflict; **must be proven** by the 100-request test on MySQL |
+| NFR-05 testability | Conflict rule isolated in `BookingService`; PHPUnit/Pest + Infection | Targets checked in M2 |
 
-### 7. NFR fit (Option A)
+### 2.8 Risks & weaknesses (Option A)
 
-- **NFR-01 (performance):** Moderate confidence — conflict check is one index-backed locking query; must be load-tested to confirm the 95th percentile ≤ 2 s at 50 concurrent. **Unknown until measured.**
-- **NFR-02 (security/access control):** Strong fit — Laravel middleware + authorization policies give centralized 403 enforcement; one automated test per protected action is straightforward.
-- **NFR-03 (usability):** Blade server-rendered → fast first paint and simple flow, but pass rate / median time cannot be predicted. **Unknown until the 5-participant test.**
-- **NFR-04 (data integrity):** Guaranteed by **row-level lock serialization**. Mechanism: `createRequest` runs `BEGIN; SELECT id FROM items WHERE id=? FOR UPDATE;` then the conflict query (`item_id` AND `date` AND overlapping interval, on a `(item_id, date)` index), then `INSERT` + `COMMIT`. Because every conflicting request locks the **same item row**, concurrent transactions serialize: the first commits, the next acquires the lock *afterward*, reads the new booking that now intersects, and rejects. → Exactly 1 of 100 commits. **Works on MySQL/MariaDB InnoDB (present in XAMPP).** ⚠️ Caveat: MySQL has **no exclusion constraint** (unlike Postgres), so the guarantee relies entirely on app-level `FOR UPDATE` + InnoDB; the conflict `SELECT` must be a locking read done *after* acquiring the item lock to see the committed row.
-- **NFR-05 (maintainability/testability):** Good fit — PHPUnit/Pest + **Infection** (PHP mutation tool) covers line-coverage ≥80% and mutation ≥70%; need a small concurrency test harness for the touching-interval and 1-minute-overlap cases.
-
-### 8. Risks & weaknesses (Option A)
-
-1. **Server ownership / patching** — you run OS, PHP, and MySQL yourself; a security patch is on you.
-2. **Concurrency correctness is easy to get wrong** — if the conflict `SELECT` is not a locking read inside the same transaction (or the item lock is omitted), double-bookings appear. Needs the NFR-04 stress test to prove it.
-3. **Endpoint ceiling breach (13 vs 10)** — must be resolved with the instructor before signing off; otherwise the design is technically non-compliant.
-4. **Single point of failure / no horizontal scale** — fine for one deployment target, but it is one machine handling both request and DB.
+1. **Test database differs from production** — Laravel 12's default `phpunit.xml` runs tests on in-memory SQLite, where `lockForUpdate()` compiles to nothing, and PHPUnit runs requests one after another in one process. A concurrency test there passes even with no lock. The NFR-04 test must run against MySQL with truly parallel requests (separate processes).
+2. **Concurrency correctness is easy to get wrong** — if the conflict `SELECT` runs outside the transaction or before the `booking_locks` row is locked, double bookings appear. Normal one-request tests still pass; only the NFR-04 stress test (100 simultaneous requests on MySQL) catches it.
+3. **Endpoint ceiling breach (14 vs 10)** 
+4. **One server** — server, PHP and MySQL patching is my responsibility; PHP 8.2 security support ends 31 Dec 2026.
 
 ### 9. Monthly running cost (Option A)
 
 - **Services:** one Linux VPS (PHP 8.2 + MySQL) **or** a shared PHP host.
 - **Provider / pricing:** Hetzner (`https://www.hetzner.com/cloud`) or DigitalOcean (`https://www.digitalocean.com/pricing`). Representative: ~$4–6/mo for 1 vCPU/1–2 GB/20 GB SSD. [ASSUMPTION — verify current price.]
-- **Usage assumptions:** synthetic data, a handful of users, low concurrency; 1 vCPU / 1–2 GB RAM / ~20 GB is ample.
+- **Usage assumptions:** synthetic data, low concurrency; 1 vCPU / 1–2 GB RAM / ~20 GB is ample.
 - **Tier required:** cheapest paid VPS. **Free tier:** local XAMPP dev is $0; a public always-on single server has no true free tier except limited options (e.g. Oracle Cloud free ARM VPS) which carry provisioning and availability caveats. [ASSUMPTION]
 - **M1 stage cost:** $0 (runs on local XAMPP); ~$5/mo only if publicly deployed.
 
+Full calculation, verified prices and DEVAI token cost: `docs/cost-model.md`.
+
 ---
 
-## OPTION B — Serverless / Backend-as-a-Service (Firebase, Node.js/TypeScript)
+## 3.OPTION B — Serverless / Backend-as-a-Service (Firebase, Node.js/TypeScript)
 
 **Deliberately different:** managed BaaS (Firebase Auth + Firestore + Cloud Functions) with a static single-page frontend on Firebase Hosting. **Does not use PHP.** Runtime: **Node.js 20 (TypeScript)** for Cloud Functions; browser SPA (Vue or vanilla JS) for the frontend.
 
-### 1. Summary
+### 3.1 Summary
 
 Static SPA calls Firebase Auth (sign-in handled by the SDK, no custom login endpoint) and reads data through Firestore **security rules**. All *mutating* business rules run in **callable Cloud Functions** (HTTPS endpoints), so the client can never bypass the conflict rule.
 
 **Booking flow:** member signs in via Firebase Auth → SPA reads `availability/{itemId}_{date}` (rules grant Members read, no owner info → FR-16) → member picks slot → SPA invokes `createBooking` Cloud Function → function runs a **Firestore transaction** on the `availability` doc: reads booked ranges, checks overlap (FR-04), writes the new range back and inserts the booking with status `pending` → SPA navigates to My Bookings.
 
-### 2. C4 Context
+### 3.2 C4 Context
 
 ```mermaid
 C4Context
     title C4 Context — Option B (Firebase serverless)
     Person(member, "Member (Khalid)")
     Person(supervisor, "Supervisor (Faisal)")
-    System(bookSys, "Sports Field & Equipment Booking System", "Firebase Auth + Cloud Firestore + Cloud Functions + static SPA")
-    Boundary(center, "Community Sports Center") {
-        System(bookSys, "Booking System")
-    }
+    System(bookSys, "Sports Field & Equipment Booking System", " Cloud Functions + static SPA")
+  
     Rel(member, bookSys, "HTTPS — Firebase Auth + SPA reads/writes")
-    Rel(supervisor, bookSys, "HTTPS — Firebase Auth + SPA reads/writes")
+    Rel(supervisor, bookSys, "HTTPS")
     %% No payment, SMS, email (non-goals)
 ```
 
-### 3. C4 Container
+### 3.3 C4 Container
 
 ```mermaid
 C4Container
     title C4 Container — Option B
     Person(member, "Member")
     Person(supervisor, "Supervisor")
-    SystemBoundary(gcp, "Google Cloud (single region)") {
+    System_Boundary(gcp, "Google Cloud (single region)") {
         Container(spa, "Static SPA", "Vue / vanilla JS", "Firebase Hosting; reads via security rules")
         Container(auth, "Firebase Auth", "Managed (Google)", "Sign-in, session, role custom claims")
         Container(fn, "Cloud Functions", "Node.js 20 (TypeScript)", "Business rules: create/cancel/decide bookings, item CRUD")
@@ -212,7 +212,7 @@ C4Container
     Rel(fn, fs, "firestore transactions (writes)")
 ```
 
-### 4. Modules (Option B)
+### 3.4 Modules (Option B)
 
 | Module | Owns (collections) | Interface / calls |
 |---|---|---|
@@ -221,7 +221,7 @@ C4Container
 | **Booking** | `bookings` + `availability` | `createBooking` / `cancelBooking` / `decideBooking` callables; all use **transactions on the `availability/{itemId}_{date}` doc** (FR-04, FR-06–08). |
 | **Availability / Reporting** | *none* | Read-only via Firestore **security rules** — Members see `availability` (ranges, **no owner**) for FR-16; Supervisors see `bookings` (+item) for FR-11. |
 
-### 5. Bounded contexts (Option B)
+### 3.5 Bounded contexts (Option B)
 
 | Bounded context | Module(s) |
 |---|---|
@@ -230,7 +230,7 @@ C4Container
 | **Booking** | Booking |
 | **Availability / Reporting** | Availability/Reporting (rules-based read model) |
 
-### 6. Endpoint list & collection list vs ceilings
+### 3.6 Endpoint list & collection list vs ceilings
 
 **Endpoints (Option B)** — reads are handled by Firestore security rules (not custom HTTP endpoints); only **callable Cloud Functions** count as endpoints:
 
@@ -257,26 +257,26 @@ C4Container
 
 **Total: 4 collections.** ✅ Under 8. (Firebase Auth users are a separate system, not a Firestore collection; there are **no** framework session/cache/jobs tables, so no defaults to strip.)
 
-### 7. NFR fit (Option B)
+### 3.7 NFR fit (Option B)
 
 - **NFR-01 (performance):** Risk — Cloud Functions **cold starts** can add ~1 s latency; at 50 concurrent with warm functions, likely fine. **Unknown until measured under cold+warm load.**
-- **NFR-02 (security/access control):** Strong auth (managed Firebase Auth) but the security model rests on **security rules + custom claims**, which are easy to mis-configure; needs the automated 403-per-protected-action tests.
+- **NFR-02 (security/access control):** auth (managed Firebase Auth) but the security model rests on **security rules + custom claims**, which are easy to mis-configure; needs the automated 403-per-protected-action tests.
 - **NFR-03 (usability):** SPA; pass rate / median **Unknown until the 5-participant test**.
-- **NFR-04 (data integrity):** Guaranteed by **single-document transaction** on `availability/{itemId}_{date}`. Mechanism: every `createBooking` runs a Firestore transaction that `get`s the same `availability` doc, checks overlap, then `set`s it. Firestore transactions are **serializable and optimistic** — two functions writing the same doc have conflicting write-sets, so Firestore aborts and retries one; the retried transaction re-reads the now-updated doc, sees the range, and rejects. → Exactly 1 of 100 commits. **Works natively on Firestore.** ⚠️ Caveat: Firestore transactions have a retry-attempt limit; under heavy contention on one slot some may exhaust retries and error, but the **exactly-one-commits** guarantee still holds (only the winner commits).
-- **NFR-05 (testability):** Moderate — Node/Jest + **Firestore emulator** + **Stryker** (TS mutation); emulator setup adds overhead, and Firestore transactions are harder to unit-test than a pure PHP service.
+- **NFR-04 (data integrity):** “Does not meet the measure”
+- **NFR-05 (testability):** | NFR-05 testability | Overlap rule kept in a pure TypeScript function inside `createBooking`, unit-tested with Jest; coverage from Jest; mutation testing with Stryker (TypeScript) | Unknown — the 80% / 70% targets are possible in principle, but the transaction and the security rules can only be tested against the Firestore emulator, and Jest, the emulator and Stryker are a toolchain not yet used |
 
-### 8. Risks & weaknesses (Option B)
+### 3.8 Weaknesses — reasons for rejection 
+1. **Does not meet NFR-04's measure.** Firestore retries a contended transaction a limited number of times, then fails it with an `ABORTED` error. Under 100 simultaneous requests some losers would get `ABORTED`, not a conflict error, so "99 receive a conflict error" is not guaranteed — even though no double booking occurs.
+2. **Breaks module ownership.** The SPA reads `bookings` (Booking) and `items` (Catalog) directly to build the dashboard, because Firestore has no joins — the coupling the design rule forbids.
+3. **Security lives in rules.** Access control (NFR-02) depends on Firestore security rules, which are hard to unit-test and easy to misconfigure.
+4. **Billing account required.** Cloud Functions need the Blaze pay-as-you-go plan; the free Spark plan cannot deploy them.
+5. **Weaker testability (NFR-05).** Jest + Firestore emulator + Stryker, a toolchain I have not used.
 
-1. **Firestore is NoSQL — no relational integrity/joins.** FR-11 dashboard wants item names; there's no join, so the SPA must do two reads or you denormalize (re-introducing staleness risk).
-2. **Concurrency gate is a single hot document.** All bookings for one item+date serialize on one `availability` doc → that doc becomes a contention bottleneck at high concurrency, and it's the only thing protecting FR-04.
-3. **Cloud Functions require Blaze (pay-as-you-go)** — the free "Spark" plan can't run them reliably; so "free tier" is not truly free for this design.
-4. **Vendor lock-in & security-rules complexity** — rules are the security boundary and are notoriously hard to test; a rules bug exposes conflicting data or unauthorized writes.
-
-### 9. Monthly running cost (Option B)
+### 3.9 Monthly running cost (Option B)
 
 - **Services:** Firebase Auth, Cloud Firestore, Cloud Functions, Firebase Hosting.
 - **Provider / pricing:** `https://firebase.google.com/pricing`; Cloud Functions `https://cloud.google.com/functions/pricing`.
-- **Usage assumptions:** synthetic data, a handful of members, peak concurrency ~50 for short bursts; low read/write volume. [ASSUMPTION]
+- **Usage assumptions:** synthetic data, peak concurrency ~50 for short bursts. 
 - **Plan tier required:** Firebase **Blaze** (pay-as-you-go) to run Cloud Functions — free "Spark" cannot run functions; within free quotas it's ~$0, but Blaze is a billing-required plan. Firestore/Auth/Hosting have free quotas on Spark. [ASSUMPTION — verify current tier rules.]
 - **Expected M1 cost:** ~$0 if usage stays within Blaze free quota; could be a few cents/mo if exceeded.
 
