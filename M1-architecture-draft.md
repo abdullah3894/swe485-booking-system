@@ -157,7 +157,7 @@ Deactivation uses `is_active = false`, **not** Laravel `SoftDeletes`: soft-delet
 
 ### 9. Monthly running cost (Option A)
 
-- **Services:** one Linux VPS (PHP 8.2 + MySQL) **or** a shared PHP host.
+- **Services:** one Linux VPS (PHP 8.2.35++ MySQL) **or** a shared PHP host.
 - **Provider / pricing:** Hetzner (`https://www.hetzner.com/cloud`) or DigitalOcean (`https://www.digitalocean.com/pricing`). Representative: ~$4–6/mo for 1 vCPU/1–2 GB/20 GB SSD. [ASSUMPTION — verify current price.]
 - **Usage assumptions:** synthetic data, low concurrency; 1 vCPU / 1–2 GB RAM / ~20 GB is ample.
 - **Tier required:** cheapest paid VPS. **Free tier:** local XAMPP dev is $0; a public always-on single server has no true free tier except limited options (e.g. Oracle Cloud free ARM VPS) which carry provisioning and availability caveats. [ASSUMPTION]
@@ -286,21 +286,24 @@ C4Container
 
 | Quality attribute (NFR) | Weight | Option A | Option B | Evidence |
 |---|---|---|---|---|
-| Performance (NFR-01) | H | Good fit, unverified — index-backed locking query | Risk — cold-start latency; likely fine warm | NFR-01: both score "Unknown until load-tested" |
-| Security (NFR-02) | H | Strong + centralized (middleware/policies) | Strong auth, but rules/claims easier to misconfigure | NFR-02: 403-per-action tests required in both |
-| Data integrity (NFR-04) | H | InnoDB `FOR UPDATE` row-lock serialization — **works on MySQL/MariaDB** | Firestore single-doc transaction — **works on Firestore** | NFR-04 mechanism described above |
-| Testability (NFR-05) | M | High (PHPUnit/Pest + Infection) | Medium (Jest + emulator + Stryker) | NFR-05: coverage/mutation targets |
-| Usability (NFR-03) | M | Server-rendered, fast paint | SPA | NFR-03: pass rate/median **Unknown until tested** |
+| Fit with declared language | H | PHP 8.2 / Laravel 12 as declared | deliberately leaves PHP (needs Node/TS) | Charter's declared implementation language |
+| Performance (NFR-01) | M | Unknown — one index query + one lock per item-day | unknown — cold-start latency  | NFR-01: both score "Unknown until load-tested" |
+| Security (NFR-02) | H | centralized (middleware/policies) testable with PHPUnit | rules/claims, hard to unit-test and easy to misconfigure | NFR-02: 403-per-action tests required in both |
+| Data integrity (NFR-04) | H | Row lock on `booking_locks` in a transaction: one winner, every loser gets a conflict error  | Optimistic transaction: no double booking, but after the retry limit some losers get `ABORTED`, not a conflict error | NFR-04 requires "99 receive a conflict error". B's gap is mitigable with extra retry-and-recheck code. Both to be measured in M2|
+| Testability (NFR-05) | H | (PHPUnit/Pest + Infection) | (Jest + emulator + Stryker) | NFR-05 targets: 80% coverage, 70% mutation score|
+| Usability (NFR-03) | M | Unknown | Unknown | NFR-03: pass rate/median **Unknown until tested** |
 | Operational burden | M | Higher — you patch OS/PHP/MySQL | Low — managed services | Not an NFR; compared by ops task list |
-| Cost | L | ~$0 dev (XAMPP); ~$5/mo deployed | ~$0 in free quota, but **Blaze required** | Pricing pages (links above) [ASSUMPTION] |
+| Cost | M | 0 $0 in development; fixed small Linux VPS when deployed |  $0 in development; usage-based, Blaze billing account required | `docs/cost-model.md` |
 | Energy / compute | L | Higher idle (server runs 24/7) | Lower for spiky low load (scales-to-zero) | Comparison by payment/idle model, not measured |
-| Fit with declared language | H | Excellent — PHP 8.2 / Laravel 12 as declared | Poor — deliberately leaves PHP (needs Node/TS) | Charter's declared implementation language |
+| Module ownership (coupling check) | M | No module touches another module's tables; Booking reaches Catalog and Identity through their services | Dashboard reads `bookings` and `items` directly from the browser (Firestore has no joins) | Coupling check |
+| Scope ceilings | M | 14 / 10 endpoints (6 views + 8 actions) 5 / 8 tables | 7 / 10 endpoints; 4 / 8 collections | Brief's scope ceilings; §2.6, §3.4 |
+
 
 ---
 
 ## Recommendation and accepted downside
 
-**Recommendation: Option A (PHP 8.2 / Laravel 12 + Blade).**
+**Recommendation: Option A (PHP 8.35 / Laravel 12 + Blade).**
 
 Reasons: it matches the charter's declared language (a strong, explicit constraint), keeps the whole toolchain on the XAMPP environment you already have, is the most testable against NFR-05, and its data-integrity mechanism (InnoDB row locks) is directly proveable on the stated MySQL/MariaDB. Option B is a valid alternative that better fits the endpoint ceiling and reduces operational burden, but it abandons the declared PHP stack, introduces Firebase Blaze billing, and makes FR-04 correctness depend on a single hot document.
 
