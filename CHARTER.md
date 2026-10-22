@@ -66,4 +66,4 @@ booking record and a live availability view.
 - [ASSUMPTION] Each item is one bookable unit (a field, or one equipment set); stock quantities are not tracked.
 
 ## Declared implementation language
-PHP 8.2 with Laravel 12.
+PHP 8.2.35+ with Laravel 12.
