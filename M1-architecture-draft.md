@@ -63,7 +63,7 @@ C4Container
     title C4 Container — Option A
     Person(member, "Member")
     Person(supervisor, "Supervisor")
-    SystemBoundary(box, "Sports Booking System — one server") {
+    System_Boundary(box, "Sports Booking System — one server") {
         Container(web, "Web Application", "PHP 8.2 / Laravel 12", "6 screens; Identity, Catalog and Booking modules; policies")
         ContainerDb(db, "MySQL Database", "MySQL / MariaDB (InnoDB)", "users, items, bookings, booking_locks")
     }
@@ -78,7 +78,7 @@ Each module owns its tables and is only reachable through a service interface.
 Element IDs are used in `TRACEABILITY.md`.
 
 | ID | Module | Owns | Public interface | Depends on |
-|---|---|---|
+|---|---|---|---|---|
 | **A-ID** | Identity & Access | `users` | `IdentityService`: register (Member only, FR-15), current user, role, `namesFor(userIds)` | — |
 | **A-CAT** | Catalog | `items` | `ItemCatalogService`: listActive, getByIds(itemIds) , create, update, deactivate, `isActive` | — |
 | **A-BK** | Booking | `bookings`, `booking_locks` | `BookingService`: createRequest, cancel, approve, reject, listForMember, `bookedRangesFor`, `supervisorSchedule` |A-CAT (isActive, getById, getByIds) · A-ID (namesFor) — **interfaces only** |
@@ -124,10 +124,10 @@ Element IDs are used in `TRACEABILITY.md`.
 **Total: 14 routes = 6 views + 8 actions.**
 
 
-**Tables — Option A:**
 
 **Tables (5 / 8):**
 | Table | Owner | Purpose |
+|---|---|---|
 | `users` | A-ID | name, email (unique), password hash, `role` enum (member, supervisor) |
 | `items` | A-CAT | name (unique), `type` enum (field, equipment), `is_active` boolean |
 | `bookings` | A-BK | user_id, item_id, date, start_time, end_time, `status` enum, created_at, decided_at |
@@ -259,11 +259,13 @@ C4Container
 
 ### 3.7 NFR fit (Option B)
 
-- **NFR-01 (performance):** Risk — Cloud Functions **cold starts** can add ~1 s latency; at 50 concurrent with warm functions, likely fine. **Unknown until measured under cold+warm load.**
-- **NFR-02 (security/access control):** auth (managed Firebase Auth) but the security model rests on **security rules + custom claims**, which are easy to mis-configure; needs the automated 403-per-protected-action tests.
-- **NFR-03 (usability):** SPA; pass rate / median **Unknown until the 5-participant test**.
-- **NFR-04 (data integrity):** “Does not meet the measure”
-- **NFR-05 (testability):** | NFR-05 testability | Overlap rule kept in a pure TypeScript function inside `createBooking`, unit-tested with Jest; coverage from Jest; mutation testing with Stryker (TypeScript) | Unknown — the 80% / 70% targets are possible in principle, but the transaction and the security rules can only be tested against the Firestore emulator, and Jest, the emulator and Stryker are a toolchain not yet used |
+| NFR | Design response | Status |
+|---|---|---|
+| NFR-01 performance | Cloud Functions; a cold start can add about 1 s to the first request | Unknown — measure warm and cold p95 |
+| NFR-02 access control | Firebase Auth + custom claims; access enforced by Firestore security rules and checks inside each function | Rules are hard to unit-test and easy to misconfigure |
+| NFR-03 usability | SPA in the browser | Unknown — requires the 5-participant test |
+| NFR-04 integrity | Optimistic Firestore transaction on `availability/{itemId}_{date}`; a retried writer re-reads, sees the overlap and returns a conflict | **Does not meet the measure:** no double booking, but after the retry limit some losers fail with `ABORTED` instead of a conflict error |
+| NFR-05 testability | Overlap rule in a pure TypeScript function, Jest + Stryker | Unknown — transactions and rules need the Firestore emulator; toolchain not yet used |
 
 ### 3.8 Weaknesses — reasons for rejection 
 1. **Does not meet NFR-04's measure.** Firestore retries a contended transaction a limited number of times, then fails it with an `ABORTED` error. Under 100 simultaneous requests some losers would get `ABORTED`, not a conflict error, so "99 receive a conflict error" is not guaranteed — even though no double booking occurs.
@@ -271,6 +273,7 @@ C4Container
 3. **Security lives in rules.** Access control (NFR-02) depends on Firestore security rules, which are hard to unit-test and easy to misconfigure.
 4. **Billing account required.** Cloud Functions need the Blaze pay-as-you-go plan; the free Spark plan cannot deploy them.
 5. **Weaker testability (NFR-05).** Jest + Firestore emulator + Stryker, a toolchain I have not used.
+6. **Leaves the declared language.** TypeScript instead of PHP; changing the declared language forfeits the Week 10 mutation-gauntlet marks.
 
 ### 3.9 Monthly running cost (Option B)
 
@@ -298,8 +301,64 @@ C4Container
 | Module ownership (coupling check) | M | No module touches another module's tables; Booking reaches Catalog and Identity through their services | Dashboard reads `bookings` and `items` directly from the browser (Firestore has no joins) | Coupling check |
 | Scope ceilings | M | 14 / 10 endpoints (6 views + 8 actions) 5 / 8 tables | 7 / 10 endpoints; 4 / 8 collections | Brief's scope ceilings; §2.6, §3.4 |
 
-
 ---
+
+
+## 5. Coupling check
+
+Two checks: (1) **dependency graph** — any cycles, or a module reaching into another module's tables? (2) **bounded contexts** — does each module stay inside its own domain?
+
+### 5.1 AI draft, Option A — FLAGGED
+
+```mermaid
+flowchart LR
+    WEB[Web layer] --> IDS[IdentityService]
+    WEB --> CAT[ItemCatalogService]
+    WEB --> BK[BookingService]
+    BK --> CAT
+    BK -. "SELECT … FROM items … FOR UPDATE" .-> ITEMS[(items — owned by Catalog)]
+    CAT --> ITEMS
+    BK --> BOOKINGS[(bookings)]
+    IDS --> USERS[(users)]
+    style ITEMS fill:#fdd,stroke:#c00
+```
+
+| Check | Result |
+|---|---|
+| Cycles | None |
+| Cross-module table access | **FAIL** — `BookingService` locks a row in `items`, which Catalog owns (the draft's NFR-04 mechanism). The same draft states "Places that break the rule: none". |
+| Why it matters | If Catalog changes `items`, bookings break without Booking's code being touched. |
+
+### 5.2 Chosen design, Option A — CLEARED
+
+```mermaid
+flowchart LR
+    WEB[Web layer] --> IDS[IdentityService]
+    WEB --> CAT[ItemCatalogService]
+    WEB --> BK[BookingService]
+    WEB --> POL[Authorization]
+    POL --> IDS
+    POL --> BK
+    BK -->|isActive, getByIds| CAT
+    BK -->|namesFor| IDS
+    BK --> BOOKINGS[(bookings)]
+    BK --> LOCKS[(booking_locks)]
+    CAT --> ITEMS[(items)]
+    IDS --> USERS[(users)]
+```
+
+| Check | Result |
+|---|---|
+| Cycles | None — Identity and Catalog depend on nothing |
+| Cross-module table access | **PASS** — Booking touches only `bookings` and `booking_locks`; it reaches Catalog and Identity through their services |
+| Bounded contexts | **PASS** — booking vocabulary stays in Booking; "is this item active?" is answered by Catalog |
+
+### 5.3 Residual risk the coupling check cannot reveal
+
+**Check-then-act race on deactivation (FR-14).** `createRequest` asks Catalog `isActive(item)` and *then* locks and inserts. Catalog's `deactivate` runs in a different transaction and does not take the booking lock. If the Supervisor deactivates the item in the gap between the check and the insert, a Pending booking is created for a deactivated item. The dependency graph is clean — Booking calling Catalog's service is allowed — so the check passes; the two modules disagree about *time*, not structure.
+
+- **Mitigation:** UC-03 denies *approving* a booking on a deactivated item (FR-14), so it can never become Approved. A test for this goes into M2.
+
 
 ## Recommendation and accepted downside
 
@@ -311,4 +370,4 @@ Reasons: it matches the charter's declared language (a strong, explicit constrai
 
 ---
 
-Two checks for your review before you finalize: (1) confirm the **endpoint ceiling** interpretation for Option A — this is the one hard conflict I could not make both options pass; and (2) confirm whether the course permits a **Node/TS non-PHP** stack for Option B, since that governs whether Option B is even a credible alternative.
+
