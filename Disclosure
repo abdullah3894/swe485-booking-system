@@ -1,0 +1,28 @@
+# AI Use Disclosure — M1 (DEVAI)
+
+**Student:** Abdullah Alhirbish · **Date:** 2026-11-08
+
+## Tools
+| Tool | Model / mode | Used for |
+|---|---|---|
+| DEVAI (provided free by the instructor) | DeepSeek-V4.1-Flash, Auto mode | First drafts of the charter, requirements and architecture |
+
+## How the drafts were used
+- **Requirements:** DEVAI produced the first draft; I reviewed and corrected it into `REQUIREMENTS.md` v3 (changes in `CORRECTION_LOG.md`).
+- **Architecture:** DEVAI was prompted twice; its raw output is the first commit of `M1-architecture-draft.md`. My corrections are in later commits of the same file; differences are listed in its §6.
+- Every AI output was committed raw first, then corrected in a separate commit (see commit history).
+
+## Examples of AI errors I corrected
+1. Booking locked a row in Catalog's `items` table while claiming "no rule breaks" — replaced with Booking's own `booking_locks` table (ADR-003).
+2. Endpoint count was 13; `POST /logout` was missing — real count 14.
+3. C4 diagrams did not render (`SystemBoundary`, `bookSys` declared twice) and the Context diagram named technologies.
+4. NFR-04 marked "Guaranteed" for both options without a test; Option B can return `ABORTED`, not a conflict error.
+
+## Rejected AI suggestions
+- A separate "Availability View" module with no tables — folded into Booking.
+- Deactivating items with both `is_active` and `SoftDeletes` — kept `is_active` only.
+
+## Statement
+I reviewed every AI-generated line, made the final decisions myself, and can explain all submitted content.
+
+**Signature:** Abdullah Alhirbish · 2026-11-08
