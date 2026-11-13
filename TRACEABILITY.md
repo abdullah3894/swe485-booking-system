@@ -1,33 +1,35 @@
 # Traceability Matrix — Sports Field & Equipment Booking System
 
-**Status:** DRAFT v3 (human review ) 
-Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are filled later in M1 after the architecture decision; Test ID is filled in M2.
+**Status:** v4 — human-reviewed
+**Verified by:** Abdullah Alhirbish (every link checked by hand against REQUIREMENTS.md v3 and M1-architecture-draft.md §2.4)
+
+Architecture element IDs are defined in `M1-architecture-draft.md` §2.4 (A-ID Identity, A-CAT Catalog, A-BK Booking, A-WEB Web layer, A-POL Authorization). ADRs are in `M1-architecture-draft.md` §8. Test ID is filled in M2.
 
 | Req ID | Source (US/UC) | Scenario | Architecture element | ADR | Test ID |
 | --- | --- | --- | --- | --- | --- |
-| FR-01 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
-| FR-02 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
-| FR-03 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
-| FR-04 | US-02 / UC-02 | SC-01, SC-02 | TBD | TBD | TBD |
-| FR-05 | US-03, US-04, US-05 / UC-02, UC-03, UC-04 | SC-01, SC-02 | TBD | TBD | TBD |
-| FR-06 | US-05 / UC-03 | SC-01, SC-03 | TBD | TBD | TBD |
-| FR-07 | US-05 / UC-03 | SC-03 | TBD | TBD | TBD |
-| FR-08 | US-04 / UC-04 | SC-02 | TBD | TBD | TBD |
-| FR-09 | US-07 / UC-05 | SC-03 | TBD | TBD | TBD |
-| FR-10 | US-03 / UC-02, UC-04 | SC-01, SC-02 | TBD | TBD | TBD |
-| FR-11 | US-06 / UC-03 | SC-01, SC-03| TBD | TBD | TBD |
-| FR-12 | US-05, US-06, US-07 / UC-03, UC-05 | SC-01, SC-03 | TBD | TBD | TBD |
-| FR-13 | US-02 / UC-02 | SC-02 | TBD | TBD | TBD |
-| FR-14 | US-07 / UC-03, UC-05 | SC-03 | TBD | TBD | TBD |
-| FR-15 | US-01 / UC-01 | SC-01 | TBD | TBD | TBD |
-| FR-16 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
-| NFR-01 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
-| NFR-02 | US-04, US-05, US-06, US-07 / UC-03, UC-04, UC-05 | SC-03 | TBD | TBD | TBD |
-| NFR-03 | US-02 / UC-02 | SC-01 | TBD | TBD | TBD |
-| NFR-04 | US-02 / UC-02 | SC-02 | TBD | TBD | TBD |
-| NFR-05 | US-02 / UC-02 | SC-02 | TBD | TBD | TBD |
+| FR-01 | US-01 / UC-01 | SC-01 | A-ID, A-WEB | ADR-001 | TBD |
+| FR-02 | US-01 / UC-01 | SC-01 | A-ID, A-WEB | ADR-001 | TBD |
+| FR-03 | US-02 / UC-02 | SC-01 | A-BK, A-WEB | ADR-001 | TBD |
+| FR-04 | US-02 / UC-02 | SC-01, SC-02 | A-BK (`createRequest`, `booking_locks`) | ADR-003 | TBD |
+| FR-05 | US-03, US-04, US-05 / UC-02, UC-03, UC-04 | SC-01, SC-02 | A-BK | ADR-001 | TBD |
+| FR-06 | US-05 / UC-03 | SC-01, SC-03 | A-BK, A-POL | ADR-001 | TBD |
+| FR-07 | US-05 / UC-03 | SC-03 | A-BK, A-POL | ADR-001 | TBD |
+| FR-08 | US-04 / UC-04 | SC-02 | A-BK, A-POL (owner policy) | ADR-001 | TBD |
+| FR-09 | US-07 / UC-05 | SC-03 | A-CAT | ADR-001 | TBD |
+| FR-10 | US-03 / UC-02, UC-04 | SC-01, SC-02 | A-BK, A-WEB | ADR-001 | TBD |
+| FR-11 | US-06 / UC-03 | SC-01, SC-03 | A-BK (`supervisorSchedule`), A-POL | ADR-001 | TBD |
+| FR-12 | US-05, US-06, US-07 / UC-03, UC-05 | SC-01, SC-03 | A-POL | ADR-001 | TBD |
+| FR-13 | US-02 / UC-02 | SC-02 | A-WEB (form request), A-BK | ADR-001 | TBD |
+| FR-14 | US-07 / UC-03, UC-05 | SC-03 | A-CAT (`isActive`), A-BK | ADR-001 | TBD |
+| FR-15 | US-01 / UC-01 | SC-01 | A-ID | ADR-001 | TBD |
+| FR-16 | US-02 / UC-02 | SC-01 | A-BK (`bookedRangesFor`) | ADR-001 | TBD |
+| NFR-01 | US-02 / UC-02 | SC-01 | A-BK, MySQL index | ADR-002 | TBD |
+| NFR-02 | US-04, US-05, US-06, US-07 / UC-03, UC-04, UC-05 | SC-03 | A-POL | ADR-001 | TBD |
+| NFR-03 | US-02 / UC-02 | SC-01 | A-WEB | ADR-001 | TBD |
+| NFR-04 | US-02 / UC-02 | SC-02 | A-BK, `booking_locks`, MySQL InnoDB | ADR-002, ADR-003 | TBD |
+| NFR-05 | US-02 / UC-02 | SC-02 | A-BK | ADR-001 | TBD |
 
-## Coverage check 
+## Coverage check (human-verified)
 
 **User stories → FR** — every story maps to at least one FR:
 
@@ -69,4 +71,6 @@ Architecture element, ADR and Test ID are **TBD**: Architecture and ADR are fill
 | NFR-04 | FR-04 |
 | NFR-05 | FR-04, FR-13 |
 
-**Orphan check:** 16 FRs and 5 NFRs, each with a source story, a use case and a scenario. No orphan requirements. Every NFR links to the FRs it constrains.
+**Architecture → requirements:** every element serves at least one requirement — A-ID (FR-01, 02, 15), A-CAT (FR-09, 14), A-BK (FR-03–08, 10, 11, 13, 14, 16), A-WEB (FR-01–03, 10, 13; NFR-03), A-POL (FR-06–08, 11, 12; NFR-02).
+
+**Orphan check:** 16 FRs and 5 NFRs, each with a source story, a use case, a scenario, an architecture element and an ADR. No orphan requirements.
