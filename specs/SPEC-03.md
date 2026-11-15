@@ -55,6 +55,6 @@ When finished, run `php artisan test` and `php artisan route:list`, and list eve
 ```
 
 ## Result
-- Raw commit:
-- Fix commit:
-- Human review / fixes:
+- Raw commit: <085a835>
+- Human review: code reviewed against all acceptance criteria; no corrections needed. 39 tests pass on booking_test.
+- Decision: DEVAI flagged that ItemRequest's Rule::unique('items','name') queries the items table from the web layer. Accepted — framework validation in A-WEB, not another module (Booking) accessing Catalog's table; the ownership rule in §5 is not broken.
