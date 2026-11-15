@@ -31,13 +31,21 @@ Create the five tables of the architecture and seed synthetic data, so the app r
 
 ## Prompt given to DEVAI
 ```
-You are working on a Laravel 12 project. Read the attached CONTEXT.md and follow it strictly.
-Implement SPEC-01 exactly as written (attached). Generate only:
-- the migration changes and new migrations
-- the models, factories and seeders listed
+You are working on a Laravel 12 project in the current workspace.
+
+First read these files from the project:
+- specs/CONTEXT.md  (project rules — follow them strictly)
+- specs/SPEC-01.md  (the task)
+- REQUIREMENTS.md and M1-architecture-draft.md only if you need more detail
+
+Implement SPEC-01 exactly as written. Create or edit only:
+- the migration changes and new migrations in database/migrations
+- the models, factories and seeders listed in SPEC-01
 - tests/Feature/SchemaTest.php
+
 Do not add tables, routes, controllers or views. Do not use SoftDeletes.
-Output each file with its full path and complete content.
+Do not run migrations. Do not modify any other files.
+When finished, list every file you created, edited or deleted.
 ```
 
 ## Result
