@@ -67,6 +67,5 @@ When finished, run `php artisan test` and `php artisan route:list`, and list eve
 ```
 
 ## Result
-- Raw commit:
-- Fix commit:
-- Human review / fixes:
+- Raw commit: 8d88fc2
+- Human fix (found in browser testing): logged-in users opening /login were redirected to / which returned 404. Added GET / (route 15) redirecting guest → /login, member → /bookings, supervisor → /dashboard, plus test_root_redirects_by_role.
