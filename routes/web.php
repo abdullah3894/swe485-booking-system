@@ -7,6 +7,15 @@ use App\Http\Controllers\BookingController;
 use App\Http\Controllers\ItemController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/', function () {
+    $user = auth()->user();
+
+    if (! $user) {
+        return redirect('/login');
+    }
+
+    return redirect($user->isSupervisor() ? '/dashboard' : '/bookings');
+});
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'create'])->name('login');

@@ -170,4 +170,14 @@ class AuthTest extends TestCase
             ->get('/_probe')
             ->assertForbidden();
     }
+        public function test_root_redirects_by_role(): void
+    {
+        $this->get('/')->assertRedirect('/login');
+
+        $this->actingAs(User::factory()->create(['role' => 'member']))
+            ->get('/')->assertRedirect('/bookings');
+
+        $this->actingAs(User::factory()->create(['role' => 'supervisor']))
+            ->get('/')->assertRedirect('/dashboard');
+    }
 }
