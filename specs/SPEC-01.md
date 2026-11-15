@@ -49,7 +49,7 @@ When finished, list every file you created, edited or deleted.
 ```
 
 ## Result
-- Raw commit: <hash of the raw(ai) commit>
+- Raw commit: 8c5ba91
 - Human fixes:
   1. Removed the `date` casts on `Booking` and `BookingLock` — they stored `Y-m-d 00:00:00`, which breaks date-equality queries under the SQLite test database (MySQL truncates, so tests and production would disagree).
   2. Added `test_deleting_item_with_bookings_fails` — the FK-restrict acceptance criterion had no test.
