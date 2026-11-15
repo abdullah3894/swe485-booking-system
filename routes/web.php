@@ -35,4 +35,6 @@ Route::middleware(['auth', 'role:supervisor'])->group(function () {
 Route::middleware(['auth', 'role:member'])->group(function () {
     Route::get('/bookings/create', [BookingController::class, 'create']);
     Route::post('/bookings', [BookingController::class, 'store']);
+    Route::get('/bookings', [BookingController::class, 'index']);
+    Route::post('/bookings/{booking}/cancel', [BookingController::class, 'cancel']);
 });

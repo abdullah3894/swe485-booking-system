@@ -5,11 +5,13 @@ namespace Tests\Feature\Booking;
 use App\Models\User;
 use App\Modules\Booking\BookingService;
 use App\Modules\Booking\Exceptions\BookingConflictException;
+use App\Modules\Booking\Exceptions\BookingNotCancellableException;
 use App\Modules\Booking\Exceptions\ItemInactiveException;
 use App\Modules\Booking\Models\Booking;
 use App\Modules\Catalog\ItemCatalogService;
 use App\Modules\Catalog\Models\Item;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class BookingServiceTest extends TestCase
@@ -30,10 +32,17 @@ class BookingServiceTest extends TestCase
         $this->member = User::factory()->create();
     }
 
-    private function existing(Item $item, string $start, string $end, string $status = 'pending', string $date = self::DATE): Booking
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    private function existing(Item $item, string $start, string $end, string $status = 'pending', string $date = self::DATE, ?User $owner = null): Booking
     {
         return Booking::create([
-            'user_id' => $this->member->id,
+            'user_id' => $owner->id ?? $this->member->id,
             'item_id' => $item->id,
             'date' => $date,
             'start_time' => $start,
@@ -49,6 +58,16 @@ class BookingServiceTest extends TestCase
             $this->fail("The request {$start}-{$end} was accepted but overlaps an existing booking.");
         } catch (BookingConflictException) {
             // Expected: FR-04 rejects the request.
+        }
+    }
+
+    private function assertCancelRejected(Booking $booking): void
+    {
+        try {
+            $this->bookings->cancel($booking->id);
+            $this->fail('The booking was cancelled but should not be cancellable.');
+        } catch (BookingNotCancellableException) {
+            // Expected: FR-08 denies the cancel.
         }
     }
 
@@ -285,5 +304,167 @@ class BookingServiceTest extends TestCase
         $this->existing($item, '16:00:00', '17:00:00');
 
         $this->assertSame([], $this->bookings->bookedRangesFor($item->id, '2026-11-21'));
+    }
+
+    public function test_list_for_member_returns_only_that_members_bookings(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create(['name' => 'Pitch A']);
+        $otherMember = User::factory()->create();
+        $mine = $this->existing($item, '19:00:00', '21:00:00');
+        $this->existing($item, '16:00:00', '17:00:00', 'pending', self::DATE, $otherMember);
+
+        $list = $this->bookings->listForMember($this->member->id);
+
+        $this->assertCount(1, $list);
+        $this->assertSame($mine->id, $list[0]['id']);
+    }
+
+    public function test_list_for_member_returns_item_name_date_times_status_and_can_cancel(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create(['name' => 'Pitch A']);
+        $booking = $this->existing($item, '19:00:00', '21:30:00');
+
+        $this->assertSame(
+            [[
+                'id' => $booking->id,
+                'item_name' => 'Pitch A',
+                'date' => self::DATE,
+                'start' => '19:00',
+                'end' => '21:30',
+                'status' => 'pending',
+                'can_cancel' => true,
+            ]],
+            $this->bookings->listForMember($this->member->id)
+        );
+    }
+
+    public function test_list_for_member_shows_a_deactivated_items_name(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create(['name' => 'Old Racket', 'type' => 'equipment']);
+        $this->existing($item, '19:00:00', '21:00:00');
+        $item->update(['is_active' => false]);
+
+        $list = $this->bookings->listForMember($this->member->id);
+
+        $this->assertSame('Old Racket', $list[0]['item_name']);
+    }
+
+    public function test_list_for_member_orders_newest_date_first(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create();
+        $later = $this->existing($item, '19:00:00', '21:00:00', 'pending', '2026-11-22');
+        $earlier = $this->existing($item, '19:00:00', '21:00:00', 'pending', '2026-11-21');
+
+        $list = $this->bookings->listForMember($this->member->id);
+
+        $this->assertSame([$later->id, $earlier->id], array_column($list, 'id'));
+    }
+
+    public function test_list_for_member_marks_started_cancelled_and_rejected_bookings_as_not_cancellable(): void
+    {
+        Carbon::setTestNow('2026-11-20 19:00:00');
+
+        $item = Item::factory()->create();
+        $this->existing($item, '19:00:00', '21:00:00');
+        $this->existing($item, '21:00:00', '22:00:00', 'cancelled');
+        $this->existing($item, '06:00:00', '07:00:00', 'rejected');
+
+        $list = $this->bookings->listForMember($this->member->id);
+
+        $this->assertCount(3, $list);
+
+        foreach ($list as $row) {
+            $this->assertFalse($row['can_cancel']);
+        }
+    }
+
+    public function test_cancel_sets_a_pending_booking_to_cancelled(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00');
+
+        $this->bookings->cancel($booking->id);
+
+        $this->assertSame('cancelled', $booking->fresh()->status);
+        $this->assertNull($booking->fresh()->decided_at);
+    }
+
+    public function test_cancel_sets_an_approved_booking_to_cancelled_and_keeps_decided_at(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $decidedAt = Carbon::parse('2026-11-14 10:00:00');
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00', 'approved');
+        $booking->update(['decided_at' => $decidedAt]);
+
+        $this->bookings->cancel($booking->id);
+
+        $this->assertSame('cancelled', $booking->fresh()->status);
+        $this->assertTrue($decidedAt->equalTo($booking->fresh()->decided_at));
+    }
+
+    public function test_cancel_rejects_an_already_cancelled_booking(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00', 'cancelled');
+
+        $this->assertCancelRejected($booking);
+        $this->assertSame('cancelled', $booking->fresh()->status);
+    }
+
+    public function test_cancel_rejects_a_rejected_booking(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00', 'rejected');
+
+        $this->assertCancelRejected($booking);
+        $this->assertSame('rejected', $booking->fresh()->status);
+    }
+
+    public function test_cancel_at_18_59_is_allowed_for_a_booking_starting_at_19_00(): void
+    {
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00');
+
+        Carbon::setTestNow('2026-11-20 18:59:00');
+
+        $this->bookings->cancel($booking->id);
+
+        $this->assertSame('cancelled', $booking->fresh()->status);
+    }
+
+    public function test_cancel_at_19_00_is_denied_for_a_booking_starting_at_19_00(): void
+    {
+        $booking = $this->existing(Item::factory()->create(), '19:00:00', '21:00:00');
+
+        Carbon::setTestNow('2026-11-20 19:00:00');
+
+        $this->assertCancelRejected($booking);
+        $this->assertSame('pending', $booking->fresh()->status);
+    }
+
+    public function test_a_cancelled_booking_no_longer_blocks_the_slot(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create();
+        $booking = $this->existing($item, '19:00:00', '21:00:00');
+
+        $this->bookings->cancel($booking->id);
+
+        $new = $this->bookings->createRequest($this->member->id, $item->id, self::DATE, '19:00', '21:00');
+
+        $this->assertSame('pending', $new->status);
+        $this->assertDatabaseCount('bookings', 2);
     }
 }
