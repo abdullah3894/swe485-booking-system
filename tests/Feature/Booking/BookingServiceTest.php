@@ -4,12 +4,14 @@ namespace Tests\Feature\Booking;
 
 use App\Models\User;
 use App\Modules\Booking\BookingService;
+use App\Modules\Booking\Exceptions\BookingAlreadyDecidedException;
 use App\Modules\Booking\Exceptions\BookingConflictException;
 use App\Modules\Booking\Exceptions\BookingNotCancellableException;
 use App\Modules\Booking\Exceptions\ItemInactiveException;
 use App\Modules\Booking\Models\Booking;
 use App\Modules\Catalog\ItemCatalogService;
 use App\Modules\Catalog\Models\Item;
+use App\Modules\Identity\IdentityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -28,7 +30,7 @@ class BookingServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->bookings = new BookingService(new ItemCatalogService());
+        $this->bookings = new BookingService(new ItemCatalogService(), new IdentityService());
         $this->member = User::factory()->create();
     }
 
@@ -461,6 +463,225 @@ class BookingServiceTest extends TestCase
         $booking = $this->existing($item, '19:00:00', '21:00:00');
 
         $this->bookings->cancel($booking->id);
+
+        $new = $this->bookings->createRequest($this->member->id, $item->id, self::DATE, '19:00', '21:00');
+
+        $this->assertSame('pending', $new->status);
+        $this->assertDatabaseCount('bookings', 2);
+    }
+
+    private function assertAlreadyDecided(Booking $booking, string $decision): void
+    {
+        try {
+            if ($decision === 'approve') {
+                $this->bookings->approve($booking->id);
+            } else {
+                $this->bookings->reject($booking->id);
+            }
+
+            $this->fail("The {$decision} of a {$booking->status} booking was accepted.");
+        } catch (BookingAlreadyDecidedException) {
+            // Expected: only a pending booking can be decided (UC-03).
+        }
+    }
+
+    public function test_supervisor_schedule_lists_pending_requests_oldest_first(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create();
+        $older = $this->existing($item, '08:00:00', '09:00:00');
+        $older->created_at = Carbon::parse('2026-11-14 08:00:00');
+        $older->save();
+
+        $newer = $this->existing($item, '10:00:00', '11:00:00');
+        $newer->created_at = Carbon::parse('2026-11-15 08:00:00');
+        $newer->save();
+
+        $this->existing($item, '12:00:00', '13:00:00', 'approved');
+
+        $schedule = $this->bookings->supervisorSchedule(self::DATE);
+
+        $this->assertSame([$older->id, $newer->id], array_column($schedule['pending'], 'id'));
+    }
+
+    public function test_supervisor_schedule_rows_carry_item_member_date_times_status_and_decided_at(): void
+    {
+        $item = Item::factory()->create(['name' => 'Pitch A']);
+        $owner = User::factory()->create(['name' => 'Khalid Member']);
+        $decidedAt = Carbon::parse('2026-11-14 10:00:00');
+
+        $booking = $this->existing($item, '16:00:00', '17:30:00', 'approved', self::DATE, $owner);
+        $booking->update(['decided_at' => $decidedAt]);
+
+        $schedule = $this->bookings->supervisorSchedule(self::DATE);
+
+        $this->assertSame([
+            'id' => $booking->id,
+            'item_name' => 'Pitch A',
+            'member_name' => 'Khalid Member',
+            'date' => self::DATE,
+            'start' => '16:00',
+            'end' => '17:30',
+            'status' => 'approved',
+            'decided_at' => '2026-11-14 10:00',
+        ], $schedule['day'][0]);
+    }
+
+    public function test_supervisor_schedule_day_lists_every_status_of_that_date_ordered_by_item_then_start(): void
+    {
+        $pitch = Item::factory()->create(['name' => 'Pitch A']);
+        $racket = Item::factory()->create(['name' => 'Racket B']);
+
+        $later = $this->existing($pitch, '19:00:00', '21:00:00', 'pending');
+        $earlier = $this->existing($pitch, '08:00:00', '09:00:00', 'rejected');
+        $other = $this->existing($racket, '10:00:00', '11:00:00', 'cancelled');
+        $this->existing($pitch, '10:00:00', '11:00:00', 'approved', '2026-11-21');
+
+        $schedule = $this->bookings->supervisorSchedule(self::DATE);
+
+        $this->assertSame([$earlier->id, $later->id, $other->id], array_column($schedule['day'], 'id'));
+        $this->assertSame(['rejected', 'pending', 'cancelled'], array_column($schedule['day'], 'status'));
+    }
+
+    public function test_supervisor_schedule_availability_splits_the_day_around_a_booking(): void
+    {
+        $item = Item::factory()->create(['name' => 'Pitch A']);
+        $this->existing($item, '16:00:00', '17:00:00', 'approved');
+
+        $availability = $this->bookings->supervisorSchedule(self::DATE)['availability'];
+
+        $this->assertCount(1, $availability);
+        $this->assertSame($item->id, $availability[0]['item_id']);
+        $this->assertSame('Pitch A', $availability[0]['item_name']);
+        $this->assertSame([['start' => '16:00', 'end' => '17:00']], $availability[0]['booked']);
+        $this->assertSame([
+            ['start' => '06:00', 'end' => '16:00'],
+            ['start' => '17:00', 'end' => '23:00'],
+        ], $availability[0]['free']);
+    }
+
+    public function test_supervisor_schedule_availability_is_the_whole_day_when_nothing_is_booked(): void
+    {
+        Item::factory()->create(['name' => 'Pitch A']);
+
+        $availability = $this->bookings->supervisorSchedule(self::DATE)['availability'];
+
+        $this->assertSame([], $availability[0]['booked']);
+        $this->assertSame([['start' => '06:00', 'end' => '23:00']], $availability[0]['free']);
+    }
+
+    public function test_supervisor_schedule_availability_counts_rejected_and_cancelled_bookings_as_free(): void
+    {
+        $item = Item::factory()->create();
+        $this->existing($item, '16:00:00', '17:00:00', 'rejected');
+        $this->existing($item, '18:00:00', '19:00:00', 'cancelled');
+
+        $availability = $this->bookings->supervisorSchedule(self::DATE)['availability'];
+
+        $this->assertSame([], $availability[0]['booked']);
+        $this->assertSame([['start' => '06:00', 'end' => '23:00']], $availability[0]['free']);
+    }
+
+    public function test_supervisor_schedule_availability_ignores_bookings_on_another_date(): void
+    {
+        $item = Item::factory()->create();
+        $this->existing($item, '16:00:00', '17:00:00', 'approved', '2026-11-21');
+
+        $availability = $this->bookings->supervisorSchedule(self::DATE)['availability'];
+
+        $this->assertSame([], $availability[0]['booked']);
+        $this->assertSame([['start' => '06:00', 'end' => '23:00']], $availability[0]['free']);
+    }
+
+    public function test_supervisor_schedule_availability_covers_only_active_items(): void
+    {
+        Item::factory()->create(['name' => 'Pitch A']);
+        Item::factory()->create(['name' => 'Old Racket', 'is_active' => false]);
+
+        $availability = $this->bookings->supervisorSchedule(self::DATE)['availability'];
+
+        $this->assertSame(['Pitch A'], array_column($availability, 'item_name'));
+    }
+
+    public function test_approve_sets_approved_and_decided_at(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $booking = $this->existing(Item::factory()->create(), '16:00:00', '17:00:00');
+
+        $this->bookings->approve($booking->id);
+
+        $this->assertSame('approved', $booking->fresh()->status);
+        $this->assertTrue(Carbon::parse('2026-11-15 09:00:00')->equalTo($booking->fresh()->decided_at));
+    }
+
+    public function test_approve_is_denied_on_a_deactivated_item_and_the_booking_stays_pending(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create(['is_active' => false]);
+        $booking = $this->existing($item, '16:00:00', '17:00:00');
+
+        try {
+            $this->bookings->approve($booking->id);
+            $this->fail('A booking on a deactivated item was approved.');
+        } catch (ItemInactiveException) {
+            // Expected: FR-14 and UC-03 deny the approval.
+        }
+
+        $this->assertSame('pending', $booking->fresh()->status);
+        $this->assertNull($booking->fresh()->decided_at);
+    }
+
+    public function test_reject_sets_rejected_and_decided_at(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $booking = $this->existing(Item::factory()->create(), '16:00:00', '17:00:00');
+
+        $this->bookings->reject($booking->id);
+
+        $this->assertSame('rejected', $booking->fresh()->status);
+        $this->assertTrue(Carbon::parse('2026-11-15 09:00:00')->equalTo($booking->fresh()->decided_at));
+    }
+
+    public function test_reject_is_allowed_on_a_deactivated_item(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create(['is_active' => false]);
+        $booking = $this->existing($item, '16:00:00', '17:00:00');
+
+        $this->bookings->reject($booking->id);
+
+        $this->assertSame('rejected', $booking->fresh()->status);
+        $this->assertNotNull($booking->fresh()->decided_at);
+    }
+
+    public function test_a_decision_on_an_already_decided_booking_is_denied(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        foreach (['approved', 'rejected', 'cancelled'] as $status) {
+            $booking = $this->existing(Item::factory()->create(), '16:00:00', '17:00:00', $status);
+
+            $this->assertAlreadyDecided($booking, 'approve');
+            $this->assertAlreadyDecided($booking, 'reject');
+
+            $this->assertSame($status, $booking->fresh()->status);
+            $this->assertNull($booking->fresh()->decided_at);
+        }
+    }
+
+    public function test_a_rejected_booking_frees_the_slot(): void
+    {
+        Carbon::setTestNow('2026-11-15 09:00:00');
+
+        $item = Item::factory()->create();
+        $booking = $this->existing($item, '19:00:00', '21:00:00');
+
+        $this->bookings->reject($booking->id);
 
         $new = $this->bookings->createRequest($this->member->id, $item->id, self::DATE, '19:00', '21:00');
 
