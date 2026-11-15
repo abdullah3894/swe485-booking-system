@@ -34,6 +34,9 @@
                 @if (auth()->user()->isSupervisor())
                     <a href="/dashboard">Dashboard</a>
                     <a href="/items">Items</a>
+                @else
+                    <a href="/bookings/create">Request booking</a>
+                    <a href="/bookings">My bookings</a>
                 @endif
                 <form method="POST" action="/logout">
                     @csrf
