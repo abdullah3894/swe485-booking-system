@@ -29,7 +29,6 @@ class Booking extends Model
     protected function casts(): array
     {
         return [
-            'date' => 'date',
             'decided_at' => 'datetime',
         ];
     }

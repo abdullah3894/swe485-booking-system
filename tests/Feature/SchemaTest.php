@@ -73,4 +73,22 @@ class SchemaTest extends TestCase
             'status' => 'pending',
         ]);
     }
+
+    public function test_deleting_item_with_bookings_fails(): void
+    {
+        $user = User::factory()->create();
+        $item = Item::factory()->create();
+
+        Booking::create([
+            'user_id' => $user->id,
+            'item_id' => $item->id,
+            'date' => '2026-11-20',
+            'start_time' => '08:00:00',
+            'end_time' => '09:00:00',
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        $item->delete();
+    }
 }

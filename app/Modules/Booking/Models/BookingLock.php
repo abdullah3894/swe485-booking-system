@@ -22,16 +22,4 @@ class BookingLock extends Model
         'item_id',
         'date',
     ];
-
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'date' => 'date',
-        ];
-    }
 }

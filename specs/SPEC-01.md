@@ -1,6 +1,6 @@
 # SPEC-01 — Database schema and seed data
 
-**Status:** Draft · **Requirements:** FR-05, FR-09, FR-14, FR-15 · **Architecture:** §2.4, §2.6
+**Status:** Done · **Requirements:** FR-05, FR-09, FR-14, FR-15 · **Architecture:** §2.4, §2.6
 
 ## Goal
 Create the five tables of the architecture and seed synthetic data, so the app runs with `php artisan migrate:fresh --seed`.
@@ -49,5 +49,9 @@ When finished, list every file you created, edited or deleted.
 ```
 
 ## Result
-- Raw commit: <hash>
-- Human fixes: <what was corrected and why>
+- Raw commit: <hash of the raw(ai) commit>
+- Human fixes:
+  1. Removed the `date` casts on `Booking` and `BookingLock` — they stored `Y-m-d 00:00:00`, which breaks date-equality queries under the SQLite test database (MySQL truncates, so tests and production would disagree).
+  2. Added `test_deleting_item_with_bookings_fails` — the FK-restrict acceptance criterion had no test.
+- Note: DEVAI added an FK on `booking_locks.item_id` (not in the SPEC); kept — it is DB-level integrity, not cross-module code access.
+- Verified: `php artisan migrate:fresh --seed` on MySQL and `php artisan test` pass.
