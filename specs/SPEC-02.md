@@ -56,6 +56,7 @@ When finished, run `php artisan test` and `php artisan route:list`, and list eve
 ```
 
 ## Result
-- Raw commit: <hash>
-- Fix commit: <hash>
-- Human fixes: <what was corrected and why>
+- Raw commit: <7172d39>
+- Follow-up: DEVAI asked how to handle tests/Feature/ExampleTest.php (asserted GET / = 200, route removed by SPEC-02). Answer: delete it.
+- Human review: code reviewed against all acceptance criteria; no corrections needed. 21 tests pass on booking_test.
+- Note: GET / is intentionally not defined (14-route limit); users open /login directly.
