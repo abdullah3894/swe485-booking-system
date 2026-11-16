@@ -6,49 +6,43 @@
 @section('content')
     <h1>My bookings</h1>
 
-    @if (session('status'))
-        <p class="status">{{ session('status') }}</p>
-    @endif
-
-    @if (session('error'))
-        <ul class="errors">
-            <li>{{ session('error') }}</li>
-        </ul>
-    @endif
-
     @if ($bookings === [])
-        <p>You have no bookings yet. <a href="/bookings/create">Request a booking</a>.</p>
+        <div class="empty">
+            <p>You have no bookings yet. <a href="/bookings/create">Request a booking</a>.</p>
+        </div>
     @else
-        <table>
-            <thead>
-                <tr>
-                    <th scope="col">Item</th>
-                    <th scope="col">Date</th>
-                    <th scope="col">Start</th>
-                    <th scope="col">End</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach ($bookings as $booking)
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
                     <tr>
-                        <td>{{ $booking['item_name'] }}</td>
-                        <td>{{ $booking['date'] }}</td>
-                        <td>{{ $booking['start'] }}</td>
-                        <td>{{ $booking['end'] }}</td>
-                        <td>{{ ucfirst($booking['status']) }}</td>
-                        <td>
-                            @if ($booking['can_cancel'])
-                                <form method="POST" action="/bookings/{{ $booking['id'] }}/cancel">
-                                    @csrf
-                                    <button type="submit">Cancel</button>
-                                </form>
-                            @endif
-                        </td>
+                        <th scope="col">Item</th>
+                        <th scope="col">Date</th>
+                        <th scope="col">Start</th>
+                        <th scope="col">End</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Actions</th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach ($bookings as $booking)
+                        <tr>
+                            <td>{{ $booking['item_name'] }}</td>
+                            <td>{{ $booking['date'] }}</td>
+                            <td>{{ $booking['start'] }}</td>
+                            <td>{{ $booking['end'] }}</td>
+                            <td><span class="badge badge-{{ $booking['status'] }}">{{ ucfirst($booking['status']) }}</span></td>
+                            <td>
+                                @if ($booking['can_cancel'])
+                                    <form method="POST" action="/bookings/{{ $booking['id'] }}/cancel">
+                                        @csrf
+                                        <button class="btn btn-danger btn-sm" type="submit">Cancel</button>
+                                    </form>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     @endif
 @endsection

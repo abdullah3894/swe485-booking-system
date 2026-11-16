@@ -3,27 +3,27 @@
 @section('title', 'Log in')
 
 @section('content')
-    <h1>Log in</h1>
+    <div class="card auth-card">
+        <h1>Log in</h1>
 
-    @if ($errors->any())
-        <ul class="errors">
-            @foreach ($errors->all() as $error)
-                <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    @endif
+        <form method="POST" action="/login">
+            @csrf
 
-    <form method="POST" action="/login">
-        @csrf
+            <div class="field">
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus>
+            </div>
 
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" required>
+            </div>
 
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" required>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Log in</button>
+            </div>
+        </form>
 
-        <button type="submit">Log in</button>
-    </form>
-
-    <p class="hint">No account yet? <a href="/register">Register</a></p>
+        <p class="hint">No account yet? <a class="btn btn-secondary btn-sm" href="/register">Register</a></p>
+    </div>
 @endsection
